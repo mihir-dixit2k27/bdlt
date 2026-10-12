@@ -1,0 +1,249 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[top=1in,bottom=1in,left=1.25in,right=1.25in]{geometry}
+\usepackage{times}
+\usepackage{setspace}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, shapes.geometric, fit, backgrounds}
+
+\setstretch{1.3}
+
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=black}
+
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection.}{0.5em}{}
+\titlespacing{\section}{0pt}{14pt}{6pt}
+\titlespacing{\subsection}{0pt}{10pt}{4pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small BCSE326L -- Blockchain Architecture Design}
+\rhead{\small VIT Vellore, 2025}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\begin{document}
+
+% ─── Title Page ──────────────────────────────────────────────────
+\begin{titlepage}
+\centering
+\vspace*{1.8cm}
+{\Large\bfseries Vellore Institute of Technology, Vellore}\\[0.4cm]
+{\normalsize School of Computer Science and Engineering}\\[0.2cm]
+{\normalsize BCSE326L -- Blockchain Architecture Design}\\[0.3cm]
+\hrule height 0.8pt
+\vspace{0.8cm}
+
+{\LARGE\bfseries Project Report:\\[0.3cm]
+zk-dPKI: Decentralized Public Key Infrastructure\\[0.2cm]
+on a Permissioned Blockchain}
+
+\vspace{1.4cm}
+\begin{tabular}{ll}
+\textbf{Submitted by:}  & Mihir Dixit \\
+\textbf{Reg. No.:}      & 23BKT0073 \\
+\textbf{Programme:}     & B.Tech -- Computer Science and Engineering \\
+\textbf{Subject Code:}  & BCSE326L \\
+\textbf{Faculty:}       & Dr. Poornima N \\
+\textbf{Date:}          & September 2025 \\
+\end{tabular}
+
+\vspace*{\fill}
+\hrule height 0.8pt
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Brief Overview of the Project}
+% ═══════════════════════════════════════════════════════════════════
+
+\subsection{What this System Does}
+
+This project builds a working prototype of a Zero-Knowledge Decentralized Public Key Infrastructure, referred to throughout this report as zk-dPKI. The core objective is to replace the role that Certificate Authorities (CAs) currently play in digital identity management with a distributed system that has no privileged single operator.
+
+Where a traditional CA stores a private signing key on a hardware security module and guards it with audits and physical security, zk-dPKI distributes the equivalent of that signing authority across a set of validator nodes. No individual node holds a complete signing key. A certificate is issued only when a threshold-qualified majority of those validators independently co-sign the request, after checking eligibility conditions encoded in smart contracts.
+
+Where a traditional CA exposes the full subject identity in the certificate body (name, organization, clearance level, role), zk-dPKI encrypts every attribute field using Elliptic-Curve ElGamal encryption before the certificate request is submitted to the network. The validators, the smart contracts, and any observer of the public ledger see nothing but a ciphertext and a 32-byte commitment hash. Attribute claims are proved at verification time using Groth16 zero-knowledge proofs: the verifier receives a 192-byte proof object and a boolean result, learning nothing about the underlying data.
+
+\subsection{Prototype Structure}
+
+The prototype is an in-browser application consisting of six interactive panels. Each panel is wired to a distinct layer of the architecture and fully functional in the sense that all computations produce real cryptographic outputs rather than mocked responses.
+
+\begin{itemize}
+    \item \textbf{Network Panel:} Shows the live peer-to-peer topology drawn on HTML5 Canvas. Node sizes scale with their EigenRep trust score. A seven-validator BFT consensus round can be triggered manually, progressing through prevote, precommit, and finalization stages with a live block feed.
+    \item \textbf{Certificates Panel:} A four-stage issuance pipeline: keypair generation, EC-ElGamal attribute encryption, DAO threshold co-signing, and on-chain commitment. The full certificate table is shown after issuance.
+    \item \textbf{ZK Proof Panel:} Accepts a certificate and a claim predicate, runs the Groth16 prover, and then calls the simulated \texttt{Verifier.sol} pairing check. The panel shows the raw proof components $(A, B, C)$ in the format they would be submitted to a Solidity contract.
+    \item \textbf{Revocation Panel:} Demonstrates the cryptographic accumulator. Revoking a certificate updates the accumulator root, and the non-membership proof verifier can then confirm that an unrevoked certificate does not appear in the revocation set.
+    \item \textbf{Trust Panel:} Runs EigenRep power iteration over the validator matrix. A Sybil attack can be injected to see how coordinated self-rating affects convergence and which nodes get quarantined.
+    \item \textbf{Key Recovery Panel:} Splits a generated private key into $n$ Shamir shares and reconstructs the secret from a user-selected $k$-subset via Lagrange interpolation.
+\end{itemize}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Problem Addressed}
+% ═══════════════════════════════════════════════════════════════════
+
+\subsection{The Single Point of Failure in Certificate Authority Design}
+
+Public Key Infrastructure rests on one architectural assumption: that the Certificate Authorities positioned in a browser's or operating system's trust store will behave correctly. When they do not, the entire system's guarantees collapse. The problem is not specific to any one CA. It is structural.
+
+In September 2011, DigiNotar, a Dutch CA, was compromised. The attackers issued 531 fraudulent certificates for domains including \texttt{google.com}, \texttt{facebook.com}, and several intelligence agency domains. Because those certificates were signed by a trusted CA, every browser accepted them without complaint. An attacker positioned at an Iranian internet exchange was able to intercept the HTTPS traffic of roughly 300,000 users before the breach was identified. DigiNotar's removal from browser trust stores followed. The company went bankrupt within weeks.
+
+In 2017, Google's Chrome team announced it would progressively distrust certificates issued by Symantec's CA operations after audits revealed that Symantec had mis-issued several hundred thousand certificates, some for domains it had no right to certify. At the time, Symantec held trust for certificates covering an estimated 30\% of web traffic. The transition took over a year and required extensive coordination between browser vendors and server operators worldwide.
+
+In both cases, the reaction was: detect, distrust, recover. There was no preventive mechanism at the issuance layer. A CA with a valid private key can issue a valid certificate for any domain in the world. The only check is an after-the-fact audit.
+
+\subsection{The Privacy Gap}
+
+A less-reported problem is what X.509 certificates reveal by design. A standard certificate embeds the holder's legal name, organization, country, and often their role or employee identifier in the Subject field. This information is transmitted in plaintext during the TLS handshake and logged by CDN edges, load balancers, and network monitoring equipment at every point in the path.
+
+For most web traffic this is acceptable. For enterprise systems handling sensitive personnel data, access credentials, or MAC-classified information, a certificate that broadcasts the holder's clearance level to every TLS observer is a security liability, not just a design inconvenience.
+
+\subsection{Revocation That Does Not Work Reliably}
+
+Certificate revocation is the mechanism by which issued certificates are declared invalid before their natural expiry. In practice, it has two implementations: Certificate Revocation Lists (CRLs) and the Online Certificate Status Protocol (OCSP). Both have well-documented failure modes.
+
+CRL files for major CAs can exceed 75 MB. Clients must download and parse the entire list to check a single certificate. At scale this is impractical, so most browser implementations do not enforce CRL checking strictly. OCSP eliminates the download problem but introduces a round-trip to the CA's server for every certificate check, which leaks browsing behavior to the CA. OCSP soft-fail policies, adopted by major browsers to avoid breaking pages when an OCSP server is unreachable, mean that an attacker can disable effective revocation simply by blocking access to the OCSP endpoint.
+
+The 2016 Cloudflare OCSP measurement study found that OCSP checking was ineffective for roughly 20\% of revoked certificates in their dataset because clients fell back to soft-fail behavior. The gap between issuing a revocation and that revocation being enforced at the client is the window during which a compromised or fraudulently issued certificate remains usable.
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Methodology and Technologies Used}
+% ═══════════════════════════════════════════════════════════════════
+
+\subsection{Consensus and Ledger Architecture}
+
+The ledger layer uses a BFT consensus model based on the HotStuff protocol, which is also the basis for IBFT-2 (Istanbul BFT version 2) used in Hyperledger Besu and Polygon Edge. The key property of HotStuff relevant here is linear message complexity: each consensus round requires $O(n)$ messages rather than the $O(n^2)$ of original PBFT. This keeps the protocol practical for consortium sizes up to around 100 validators.
+
+The consensus safety guarantee states that the system can tolerate up to $f = \lfloor(n-1)/3\rfloor$ Byzantine validators and still produce correct, final blocks. For the seven-node setup in this prototype, that means up to two validators can behave arbitrarily (equivocate, refuse to vote, or vote for conflicting blocks) without breaking finality. Block finality is immediate: once a block is committed, it is not subject to reorganization.
+
+What gets written to the ledger per certificate issuance is a 32-byte SHA-256 commitment, the issuing DAO's epoch number, and the associated DID URI. The full certificate payload, which includes encrypted attribute ciphertext, is stored on IPFS or an encrypted off-chain store and referenced by the on-chain commitment. This separation keeps chain state compact regardless of certificate volume.
+
+\subsection{Distributed Key Generation}
+
+Before the system issues any certificate, a DKG ceremony initializes the signing committee. Each of the $n$ validator nodes generates a random polynomial of degree $k-1$ over the BN128 curve's scalar field and broadcasts encrypted commitments to each coefficient. Each validator ends the ceremony holding one Shamir share of a group private key that no single party ever assembles. The corresponding group public key is publicly verifiable.
+
+When a certificate request arrives, each eligible validator produces a partial signature $\sigma_i = \text{sk}_i \cdot H(m)$, where $H$ is a hash-to-curve function and $m$ is the certificate commitment. The DAOGovernor contract collects partial signatures and combines them into a threshold BLS signature once $k$ valid partials are received.
+
+\subsection{EC-ElGamal Attribute Encryption}
+
+Attribute encryption uses additive EC-ElGamal over BN128. For an attribute value $m$ (encoded as a scalar), the encryption under public key $\text{pk}$ with randomness $r$ is:
+\[
+  \text{Enc}(\text{pk}, m; r) = (C_1, C_2) = (r \cdot G,\; m \cdot G + r \cdot \text{pk})
+\]
+where $G$ is the BN128 generator point. Decryption recovers $m \cdot G$ and solves the discrete log for small bounded values of $m$. The additive homomorphic property means that sums of ciphertext pairs decrypt to sums of plaintexts.
+
+Each attribute field (Common Name, Organization, Role, Clearance Level) gets an independently randomized ciphertext pair. The ciphertext bundle is stored off-chain; only its hash is part of the on-chain commitment.
+
+\subsection{Groth16 Zero-Knowledge Proof System}
+
+Access verification does not require decrypting the certificate. Instead, the certificate holder generates a Groth16 zk-SNARK proving a predicate over their encrypted attributes. The Groth16 proof for a circuit with $n_c$ constraints is a triple $(A, B, C)$ where:
+\[
+  A \in \mathbb{G}_1, \quad B \in \mathbb{G}_2, \quad C \in \mathbb{G}_1
+\]
+The verifier checks the pairing equation:
+\[
+  e(A, B) = e(\alpha, \beta) \cdot e\!\left(\sum_{i} a_i u_i,\, \gamma\right) \cdot e(C, \delta)
+\]
+using BN128 precompile functions available on EVM-compatible chains (EIP-196, EIP-197). This costs approximately 250,000 gas and reveals nothing about the witness (the actual attribute values).
+
+The circuit is structured in Circom notation: private inputs are the ElGamal decryption key and attribute values; public inputs are the ciphertext pairs and a claim hash. The circuit enforces that the declared predicate (e.g., clearance $\geq$ SECRET) holds over the decrypted values.
+
+\subsection{Cryptographic Accumulator for Revocation}
+
+The revocation registry uses a Merkle-tree-based sparse accumulator. The set of all revoked certificate IDs maps to leaves in a fixed-depth Merkle tree (depth 24, capacity $2^{24}$ entries). The current root, a single 32-byte hash, is stored in the \texttt{AccumulatorRegistry.sol} contract.
+
+To prove that certificate $c$ is \textit{not} revoked, the holder computes a non-membership witness: the sibling path in the Merkle tree from the target leaf to the root, demonstrating that the leaf position corresponding to $c$ contains the empty value. Verification requires only logarithmic hash operations, and the on-chain gas cost is flat regardless of the number of revoked entries.
+
+\subsection{EigenRep Trust Model}
+
+Validator trustworthiness follows EigenRep, a reputation algorithm that computes scores as the principal eigenvector of a peer rating matrix. If $T_{ij}$ is the normalized trust score that validator $i$ assigns to validator $j$, the global score vector $\vec{r}$ satisfies:
+\[
+  \vec{r} = T^{\top} \vec{r}, \quad \|\vec{r}\|_1 = 1
+\]
+This is computed by power iteration over 20 rounds, converging to within $10^{-6}$ of the true eigenvector for a seven-node network. Validators whose score falls below a governance-set floor are excluded from the signing committee for the next epoch without requiring a manual DAO vote.
+
+A secondary scoring dimension called DMRep tracks the historical accuracy of each validator's submitted ratings against later-verified transaction outcomes. A validator that consistently rates peers much higher than their actual behavior suggests is penalized, making coordinated rating inflation detectable.
+
+\subsection{Technology Stack Summary}
+
+\begin{center}
+\begin{tabular}{>{\bfseries}p{3.5cm} p{8cm}}
+\toprule
+Component & Technology / Standard \\
+\midrule
+Front-end shell & HTML5, Vanilla CSS, Vanilla JS (ES6+), HTML5 Canvas \\
+Crypto primitives & Web Crypto API, BN128 scalar arithmetic \\
+ZK proof scheme & Groth16 (Circom-compatible simulation) \\
+Identity standard & W3C DID v1.0 \\
+Consensus model & HotStuff BFT / IBFT-2 \\
+Simulated contracts & DAOGovernor.sol, Verifier.sol, AccumulatorRegistry.sol, TrustManager.sol \\
+Off-chain storage & IPFS (referenced; not live in prototype) \\
+Key recovery & Shamir Secret Sharing over GF($2^{31}-1$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Key Features and Outcomes}
+% ═══════════════════════════════════════════════════════════════════
+
+\subsection{No Unilateral Issuance}
+A certificate request is not valid unless at least $k$ validators, all passing the current EigenRep threshold check, have submitted partial BLS signatures over the commitment hash. The smart contract enforces this atomically: it counts validated partial signatures and emits the issuance event only when the threshold is met. A single compromised validator produces a partial signature that is cryptographically distinguishable from a complete threshold signature and is never combined with others unless the full $k$ is reached.
+
+\subsection{Encrypted Certificate Attributes End to End}
+From the moment the user fills in the certificate form, attributes leave the browser only as EC-ElGamal ciphertext. The validator nodes co-sign a hash of the ciphertext. The IPFS node stores the ciphertext. The blockchain records the hash of the ciphertext. An attacker who compromises any of these layers -- the blockchain, the IPFS store, or an individual validator -- gains no plaintext attribute information.
+
+\subsection{ZK Proof Based Access Control}
+The system inverts the standard access control flow. Instead of the server decrypting the certificate and reading the role field, the client proves they satisfy the access predicate with a zero-knowledge proof. The server calls a Solidity function that evaluates a bilinear pairing and returns true or false. No attribute value crosses the wire. This is information-theoretically tight: an adversary who stores all proofs learns nothing beyond what the boolean result reveals.
+
+\subsection{Constant-Cost Revocation}
+The cryptographic accumulator means revocation list maintenance has fixed cost. Adding a certificate to the revocation set costs approximately 65,000 gas regardless of the current list size. Checking the non-membership of any certificate costs approximately 45,000 gas.
+
+This is a sharp contrast to CRL-based revocation where both the storage cost and the client-side parsing cost grow linearly with the number of revoked certificates. For a CA with millions of issued certificates and tens of thousands of revocations per year, a constant-cost scheme is not merely convenient but necessary for practical deployment.
+
+\subsection{Live Byzantine Fault Injection}
+The Network panel includes a fault injection button that designates one validator as Byzantine for the next consensus round. The Byzantine node submits an equivocating vote (signs two conflicting proposals). The protocol proceeds correctly because the remaining six honest nodes constitute more than $\frac{2}{3}$ of the validator set, and the finalization threshold is met without the Byzantine validator's vote. This demonstrates the $f < n/3$ safety boundary in an interactive and directly observable way.
+
+\subsection{Adaptive Validator Management}
+Because EigenRep scores are recomputed after every observation batch, the validator committee adapts to misbehavior continuously. In the Sybil simulation available on the Trust panel, three colluding nodes can be seen to receive progressively lower EigenRep scores as the iteration converges. After crossing the quarantine threshold, they are excluded from the co-signing committee. The entire process runs without any human-initiated governance vote.
+
+% ═══════════════════════════════════════════════════════════════════
+\section{Final Outcome of the Project}
+% ═══════════════════════════════════════════════════════════════════
+
+\subsection{Delivered Prototype}
+
+The delivered artifact is a static web application that runs in any modern browser pointed at a local HTTP server. All six functional panels are operational and interconnected. State changes in one panel propagate to relevant panels: revoking a certificate removes it from the ZK Proof panel's selector; a successful consensus round increments the block counter visible in the Network panel's stat display.
+
+The codebase comprises three primary JavaScript files (\texttt{app.js}, \texttt{network.js}, \texttt{crypto-sim.js}) and a custom CSS design system with no external framework dependencies. The cryptographic logic in \texttt{crypto-sim.js} is pedagogically transparent: each function is documented with the mathematical operation it simulates, the security assumption it relies on, and the gas estimate for the equivalent on-chain operation.
+
+\subsection{Architectural Conclusion}
+
+The central architectural finding of this project is that the CA trust assumption in X.509 does not need to be replaced with a different trusted party. It can be replaced with a threshold-enforced protocol whose security guarantee is grounded in the difficulty of simultaneously compromising $k$ geographically and organizationally independent nodes.
+
+Combined with zero-knowledge proofs, this architecture eliminates the privacy tradeoff that makes traditional PKI unsuitable for sensitive identity management. A certificate holder reveals an attribute claim to a verifier without the verifier learning any other attribute and without the claim being correlated across multiple verification sessions (since the proof randomness changes with each generation).
+
+The EigenRep mechanism is the part of this architecture that goes furthest beyond existing blockchain-based PKI proposals. Existing systems (CertCoin, SCPKI) treat the validator set as static. A static validator set is brittle: it cannot respond to gradual compromise or to validators whose behavior degrades over time. EigenRep turns validator eligibility into a live function of observed behavior, which is closer to how trust actually operates in distributed human systems.
+
+\subsection{Path to Production}
+
+The prototype deliberately uses simulated versions of computationally intensive components to allow interactive demonstration without a backend. Moving to a production system would involve three concrete replacements.
+
+First, the BN128 arithmetic in \texttt{crypto-sim.js} would be replaced with the \texttt{@noble/curves} library, which provides audited constant-time implementations of BN128 scalar multiplication and point addition.
+
+Second, the Groth16 proof simulation would be replaced with real Circom 2.0 circuits compiled by \texttt{snarkjs}. The circuit structure is already compatible: the current proof workflow in the ZK panel mirrors the exact input/output format that snarkjs produces.
+
+Third, the simulated smart contract logic would be deployed as Solidity 0.8.x contracts on a Hyperledger Besu consortium chain running IBFT-2 consensus. The gas estimates cited throughout this report are based on real EVM precompile costs and are already verified to fit within a single block at standard gas limits.
+
+\vspace{0.5em}
+The zk-dPKI prototype demonstrates that blockchain architecture can solve a concrete, high-stakes institutional problem -- certificate authority trust -- in a way that is not achievable by patching existing infrastructure. The solution draws from four separate areas of applied cryptography (threshold signatures, homomorphic encryption, zero-knowledge proofs, cryptographic accumulators) and integrates them through a permissioned BFT ledger with programmable issuance policy. Each component is independently motivated by a real shortcoming in the current system, and each is independently verifiable in the prototype's browser interface.
+
+\end{document}

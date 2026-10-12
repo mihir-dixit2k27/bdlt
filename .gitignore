@@ -1,0 +1,24 @@
+# Rust build artifacts
+merkle_tree/target/
+blockchain_tamper/target/
+
+# OS / editor artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+
+# LaTeX build artifacts
+reports/*.aux
+reports/*.log
+reports/*.out
+reports/*.toc
+reports/*.synctex.gz
+reports/*.fls
+reports/*.fdb_latexmk
+
+# Resume files not part of project code
+resumes/
+*.pdf
+mihir_dixit_resume_*.tex

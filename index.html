@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <meta name="description"
+    content="zk-dPKI: decentralized public key infrastructure. EC-ElGamal, Groth16 zk-SNARKs, BFT consensus, cryptographic accumulator revocation, EigenRep trust management." />
+  <title>zk-dPKI</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body>
+
+  <nav class="topnav">
+    <div class="brand">
+      <span class="brand-word">zk-dPKI</span>
+      <span class="brand-slash">/</span>
+      <span class="brand-sub">DECENTRALIZED PKI</span>
+    </div>
+    <div class="nav-tabs">
+      <div class="nav-tab" data-panel="net"><span class="tab-idx">01</span>&nbsp; Network</div>
+      <div class="nav-tab" data-panel="cert"><span class="tab-idx">02</span>&nbsp; Certificates</div>
+      <div class="nav-tab" data-panel="zk"><span class="tab-idx">03</span>&nbsp; ZK Proof</div>
+      <div class="nav-tab" data-panel="rev"><span class="tab-idx">04</span>&nbsp; Revocation</div>
+      <div class="nav-tab" data-panel="trust"><span class="tab-idx">05</span>&nbsp; Trust</div>
+      <div class="nav-tab" data-panel="key"><span class="tab-idx">06</span>&nbsp; Key Recovery</div>
+    </div>
+    <div class="nav-right">
+      <span class="net-state">BFT-POS</span>&nbsp;LIVE
+    </div>
+  </nav>
+
+  <!-- ===== 01 NETWORK ============================================= -->
+  <div id="panel-net" class="panel main">
+    <div class="wrap">
+      <div class="sh">
+        <div class="sh-pre">Consensus Layer</div>
+        <div class="sh-title" id="s-block" style="font-size:48px;color:var(--hi);font-variant-numeric:tabular-nums">0
+        </div>
+        <div class="stat-l">BLOCK HEIGHT</div>
+        <div class="sh-rule"></div>
+      </div>
+
+      <div class="g g-4stats row">
+        <div class="cell c-dark" style="border-right:1px solid var(--border)">
+          <canvas id="canvas" height="256"></canvas>
+          <div style="display:flex;gap:16px;margin-top:8px;font-size:9px;color:var(--grey-lo)">
+            <span style="color:var(--hi)">&#9632;</span> RA Validator &nbsp;
+            <span style="color:var(--grey)">&#9632;</span> Relay &nbsp;
+            <span style="color:var(--err)">&#9632;</span> Quarantined &nbsp;
+            Node size = EigenRep score
+          </div>
+        </div>
+        <div class="cell" style="border-right:1px solid var(--border)">
+          <div class="stat-n" id="s-certs">0</div>
+          <div class="stat-l">Certs Issued</div>
+          <hr class="thin" />
+          <div class="stat-n" style="font-size:30px" id="s-revoked">0</div>
+          <div class="stat-l">Revoked</div>
+        </div>
+        <div class="cell" style="border-right:1px solid var(--border)">
+          <div class="stat-n" id="s-nodes">0</div>
+          <div class="stat-l">Active Nodes</div>
+          <hr class="thin" />
+          <div id="s-dkg" style="font-size:11px;color:var(--hi);line-height:1.6">Initializing DKG...</div>
+          <div class="stat-l" style="margin-top:4px">DKG Status</div>
+        </div>
+        <div class="cell">
+          <div class="term" style="height:100%;min-height:220px">
+            <span class="t-dim">// Stack</span>
+            <span class="t-hi">L1</span> BFT-PoS ledger
+            <span class="t-dim"> commitments only</span>
+            <span class="t-hi">L2</span> EVM contracts
+            <span class="t-dim"> DAOGovernor.sol</span>
+            <span class="t-dim"> Verifier.sol</span>
+            <span class="t-dim"> Accumulator.sol</span>
+            <span class="t-hi">L3</span> Off-chain prover
+            <span class="t-dim"> EC-ElGamal enclave</span>
+            <span class="t-dim"> Groth16 circuits</span>
+            <span class="t-hi">FS</span> IPFS encrypted
+            <span class="t-dim"> payload storage</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="g g-5050" style="border-top:none">
+        <div class="cell c-dark" style="border-right:1px solid var(--border)">
+          <div
+            style="font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--grey-lo);margin-bottom:14px">
+            BFT Consensus Simulator</div>
+          <div id="consensus-grid" class="con-grid"></div>
+          <div class="btn-row">
+            <button class="btn btn-hi" id="btn-consensus">RUN ROUND</button>
+            <button class="btn btn-ghost" id="btn-inject-fault">INJECT FAULT</button>
+          </div>
+          <div id="consensus-log" class="log" style="margin-top:12px"></div>
+        </div>
+        <div class="cell">
+          <div
+            style="font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--grey-lo);margin-bottom:12px">
+            Block Feed</div>
+          <div id="block-feed" class="log" style="height:180px"></div>
+          <hr class="thin" />
+          <div style="font-size:10px;color:var(--grey-lo);line-height:2">
+            <span style="color:var(--grey)">CURVE</span>&nbsp;&nbsp;&nbsp;BN128 (EVM pairing-friendly)<br />
+            <span style="color:var(--grey)">FINALITY</span>&nbsp;~2s HotStuff BFT<br />
+            <span style="color:var(--grey)">GAS</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;142,500 per issuance<br />
+            <span style="color:var(--grey)">STATE</span>&nbsp;&nbsp;&nbsp;256-byte on-chain commitment
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 02 CERTIFICATES ======================================== -->
+  <div id="panel-cert" class="panel main">
+    <div class="wrap">
+      <div class="sh">
+        <div class="sh-pre">Issuance Pipeline</div>
+        <div class="sh-title">Certificate Issuance</div>
+        <div class="sh-rule"></div>
+        <div class="sh-meta">EC-ElGamal encryption &nbsp;/&nbsp; 3-of-5 DKG threshold signature &nbsp;/&nbsp; DID
+          binding</div>
+      </div>
+      <div class="g g-6040">
+        <div class="cell c-dark" style="border-right:1px solid var(--border)">
+          <ul class="pipe">
+            <li class="pipe-step">
+              <div id="ps1" class="pipe-n" data-n="1">1</div>
+              <div>
+                <div class="pipe-t">EC-ElGamal Keypair on BN128</div>
+                <div class="pipe-d">Private key stays in local enclave. Public key derives the DID URI.</div>
+                <div class="pipe-code" id="pk-out"></div>
+              </div>
+            </li>
+            <li class="pipe-step">
+              <div id="ps2" class="pipe-n" data-n="2">2</div>
+              <div>
+                <div class="pipe-t">Attribute Encryption (Additive Homomorphic)</div>
+                <div class="pipe-d">Each X.509 field becomes ciphertext. Payload pushed to IPFS.</div>
+                <div class="pipe-code" id="ct-out"></div>
+              </div>
+            </li>
+            <li class="pipe-step">
+              <div id="ps3" class="pipe-n" data-n="3">3</div>
+              <div>
+                <div class="pipe-t">DAO Threshold Signature (3-of-5 DKG)</div>
+                <div class="pipe-d">RAs with EigenRep above 0.75 co-sign. No single CA.</div>
+              </div>
+            </li>
+            <li class="pipe-step">
+              <div id="ps4" class="pipe-n" data-n="4">4</div>
+              <div>
+                <div class="pipe-t">On-Chain Commitment</div>
+                <div class="pipe-d">32-byte hash anchored to BFT ledger. Gas ~140,000.</div>
+              </div>
+            </li>
+          </ul>
+          <div
+            style="font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--grey-lo);margin:14px 0 6px">
+            Tx Log</div>
+          <div id="cert-log" class="log"></div>
+        </div>
+        <div class="cell">
+          <div class="field"><label>Common Name</label><input id="cn" class="ctrl" type="text"
+              placeholder="e.g. Priya Nair" /></div>
+          <div class="field"><label>Organization</label><input id="org" class="ctrl" type="text"
+              placeholder="e.g. CipherEdge Labs" /></div>
+          <div class="field"><label>RBAC Role</label>
+            <select id="role" class="ctrl">
+              <option>Admin</option>
+              <option>Operator</option>
+              <option>Auditor</option>
+              <option>Observer</option>
+            </select>
+          </div>
+          <div class="field"><label>MAC Clearance</label>
+            <select id="lvl" class="ctrl">
+              <option>TOP-SECRET</option>
+              <option>SECRET</option>
+              <option>CONFIDENTIAL</option>
+              <option>UNCLASSIFIED</option>
+            </select>
+          </div>
+          <button id="btn-issue" class="btn btn-hi" style="width:100%;justify-content:center">ISSUE CERTIFICATE</button>
+          <div id="cert-alert" class="alert"></div>
+          <div id="new-cert" style="margin-top:14px"></div>
+        </div>
+      </div>
+      <hr class="thin" />
+      <div class="tw">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Subject</th>
+              <th>Org</th>
+              <th>Role</th>
+              <th>Clearance</th>
+              <th>Expires</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="cert-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 03 ZK PROOF =========================================== -->
+  <div id="panel-zk" class="panel main">
+    <div class="wrap">
+      <div class="sh">
+        <div class="sh-pre">Zero-Knowledge Verifier</div>
+        <div class="sh-title">ZK Proof</div>
+        <div class="sh-rule"></div>
+        <div class="sh-meta">Groth16 on BN128 &nbsp;/&nbsp; 192-byte proof &nbsp;/&nbsp; 3 on-chain pairing checks</div>
+      </div>
+      <div class="g g-5050">
+        <div class="cell c-dark" style="border-right:1px solid var(--border)">
+          <div class="field"><label>Certificate (Private Witness)</label>
+            <select id="zk-cert" class="ctrl">
+              <option value="">Select a valid certificate</option>
+            </select>
+          </div>
+          <div class="field"><label>Claim Predicate</label>
+            <select id="zk-claim" class="ctrl">
+              <option value="clearance_gte_SECRET">Clearance is SECRET or above</option>
+              <option value="role_admin_op">Role is Admin or Operator</option>
+              <option value="cert_valid">Certificate has not expired</option>
+              <option value="org_trusted">Organization is in trusted registry</option>
+            </select>
+          </div>
+          <div class="btn-row">
+            <button id="btn-prove" class="btn btn-hi">GENERATE PROOF</button>
+            <button id="btn-verify" class="btn btn-ghost" disabled>VERIFY ON-CHAIN</button>
+          </div>
+          <div id="zk-alert" class="alert"></div>
+          <hr class="thin" />
+          <ul class="pipe">
+            <li class="pipe-step">
+              <div id="zs1" class="pipe-n" data-n="1">1</div>
+              <div>
+                <div class="pipe-t">Circuit Compilation</div>
+                <div class="pipe-d">Trusted setup produces proving key PK and verification key VK on BN128.</div>
+              </div>
+            </li>
+            <li class="pipe-step">
+              <div id="zs2" class="pipe-n" data-n="2">2</div>
+              <div>
+                <div class="pipe-t">Groth16 Prover</div>
+                <div class="pipe-d">Output: proof pi = (A, B, C) in G1 x G2 x G1.</div>
+              </div>
+            </li>
+            <li class="pipe-step">
+              <div id="zs3" class="pipe-n" data-n="3">3</div>
+              <div>
+                <div class="pipe-t">192-byte Serialized Proof</div>
+                <div class="pipe-d">Constant size, independent of witness complexity.</div>
+              </div>
+            </li>
+          </ul>
+          <div
+            style="font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--grey-lo);margin-top:12px;margin-bottom:6px">
+            Log</div>
+          <div id="zk-log" class="log"></div>
+        </div>
+        <div class="cell">
+          <div id="proof-out"
+            style="min-height:160px;display:flex;align-items:center;justify-content:center;color:var(--grey-lo);font-size:11px">
+            Generate a proof to see Groth16 output</div>
+          <hr class="thin" />
+          <div id="zk-result"
+            style="min-height:80px;display:flex;align-items:center;justify-content:center;color:var(--grey-lo);font-size:11px">
+            Verification result appears here</div>
+          <hr class="thin" />
+          <div class="term" style="font-size:10px">
+            <span class="t-dim">// Verifier.sol receives:</span>
+            <span class="t-hi">proof.pi_a</span> G1 point 64 bytes
+            <span class="t-hi">proof.pi_b</span> G2 point 128 bytes
+            <span class="t-hi">proof.pi_c</span> G1 point 64 bytes
+            <span class="t-hi">publicSignals</span> [claimHash, valid_bit]
+            <span class="t-dim">// Verifier never learns:</span>
+            <span class="t-err">identity key org role cert_id</span>
+            <span class="t-dim">// Return:</span>
+            <span class="t-ok">bool ok = pairing_check(proof, vk);</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 04 REVOCATION ========================================= -->
+  <div id="panel-rev" class="panel main">
+    <div class="wrap">
+      <div class="sh">
+        <div class="sh-pre">Accumulator Registry</div>
+        <div class="sh-title">Revocation</div>
+        <div class="sh-rule"></div>
+        <div class="sh-meta">Cryptographic accumulator &nbsp;/&nbsp; O(1) non-membership proof &nbsp;/&nbsp; no CRL
+          traversal</div>
+      </div>
+      <div class="g g-5050">
+        <div class="cell c-dark" style="border-right:1px solid var(--border)">
+          <div
+            style="font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--grey-lo);margin-bottom:8px">
+            Accumulator Root</div>
+          <div id="acc-root" class="acc-root">Loading...</div>
+          <hr class="thin" />
+          <div class="field"><label>Certificate to Revoke</label>
+            <select id="rev-sel" class="ctrl">
+              <option value="">Select</option>
+            </select>
+          </div>
+          <div class="field"><label>Reason Code</label>
+            <select id="rev-reason" class="ctrl">
+              <option>KEY_COMPROMISE</option>
+              <option>CA_COMPROMISE</option>
+              <option>PRIVILEGE_WITHDRAWN</option>
+              <option>MALICIOUS_ACTIVITY</option>
+            </select>
+          </div>
+          <button id="btn-revoke" class="btn btn-err">REVOKE CERTIFICATE</button>
+          <div id="rev-alert" class="alert"></div>
+          <hr class="thin" />
+          <div
+            style="font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--grey-lo);margin-bottom:8px">
+            Non-Membership Proof</div>
+          <div class="field"><label>Certificate ID to Test</label>
+            <input id="rev-testid" class="ctrl" type="text" placeholder="CERT-2025-0A1F" />
+          </div>
+          <button id="btn-nonmem" class="btn btn-ghost">PROVE NON-MEMBERSHIP</button>
+        </div>
+        <div class="cell">
+          <div id="nonmem-result" style="min-height:120px"></div>
+          <div
+            style="font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--grey-lo);margin:12px 0 6px">
+            Tx Log</div>
+          <div id="rev-log" class="log"></div>
+          <hr class="thin" />
+          <div class="term" style="font-size:10px">
+            <span class="t-dim">// CRL O(n) scan, leaks query metadata</span>
+            <span class="t-dim">// OCSP central server, privacy breach</span>
+            <span class="t-hi">// Acc O(1) hash check, private</span>
+
+            <span class="t-hi">acc.add(id)</span> gas ~65,000
+            <span class="t-hi">acc.verify(id)</span> gas ~45,000
+            <span class="t-dim">// Proof size constant, root = 32B</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 05 TRUST ============================================== -->
+  <div id="panel-trust" class="panel main">
+    <div class="wrap">
+      <div class="sh">
+        <div class="sh-pre">EigenRep Power Iteration</div>
+        <div class="sh-title">Trust Manager</div>
+        <div class="sh-rule"></div>
+        <div class="sh-meta">EigenRep convergence &nbsp;/&nbsp; DMRep accuracy scoring &nbsp;/&nbsp; auto-quarantine
+        </div>
+      </div>
+      <div class="btn-row" style="margin-bottom:18px">
+        <button id="btn-eigen" class="btn btn-hi">RUN EIGENREP (20 ROUNDS)</button>
+        <button id="btn-sybil" class="btn btn-err">SIMULATE SYBIL ATTACK</button>
+        <button id="btn-reset" class="btn btn-ghost">RESET NETWORK</button>
+      </div>
+      <div id="trust-alert" class="alert"></div>
+      <div id="node-grid" class="node-grid"></div>
+      <div class="g" style="border:1px solid var(--border)">
+        <div class="cell c-dark" style="border:none">
+          <div
+            style="font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--grey-lo);margin-bottom:10px">
+            Global EigenRep Rankings</div>
+          <div id="eigen-out" style="color:var(--grey-lo);font-size:11px">Run EigenRep iteration to see power-iteration
+            convergence.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 06 KEY RECOVERY ======================================= -->
+  <div id="panel-key" class="panel main">
+    <div class="wrap">
+      <div class="sh">
+        <div class="sh-pre">Shamir Secret Sharing</div>
+        <div class="sh-title">Key Recovery</div>
+        <div class="sh-rule"></div>
+        <div class="sh-meta">k-of-n threshold &nbsp;/&nbsp; Mersenne prime field GF(2^31-1) &nbsp;/&nbsp; Lagrange
+          reconstruction</div>
+      </div>
+      <div class="g g-5050">
+        <div class="cell c-dark" style="border-right:1px solid var(--border)">
+          <div style="background:var(--bg);border:1px solid var(--border);padding:12px 14px;margin-bottom:14px">
+            <div
+              style="font-size:9px;color:var(--grey-lo);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">
+              Master Private Key (local only)</div>
+            <div id="master-key" style="font-size:12px;color:var(--hi);word-break:break-all">Not yet generated</div>
+          </div>
+          <button id="btn-genkey" class="btn btn-ghost" style="margin-bottom:14px">GENERATE KEY</button>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="field"><label>Total Shares (n)</label>
+              <select id="kr-n" class="ctrl">
+                <option>3</option>
+                <option selected>5</option>
+                <option>7</option>
+              </select>
+            </div>
+            <div class="field"><label>Threshold (k)</label>
+              <select id="kr-t" class="ctrl">
+                <option>2</option>
+                <option selected>3</option>
+                <option>4</option>
+                <option>5</option>
+              </select>
+            </div>
+          </div>
+          <button id="btn-split" class="btn btn-hi">SPLIT AND DISTRIBUTE</button>
+          <div id="kr-shares" style="display:none;margin-top:14px">
+            <div
+              style="font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--grey-lo);margin-bottom:8px">
+              Select k or more shares</div>
+            <div id="share-grid" class="share-grid"></div>
+          </div>
+          <div id="kr-alert" class="alert"></div>
+        </div>
+        <div class="cell">
+          <div
+            style="background:var(--bg);border:1px solid var(--border-hi);padding:14px;min-height:80px;margin-bottom:14px;font-size:11px;color:var(--grey-lo)">
+            Select k or more shares, then click Recover.
+            <div id="kr-recovered" style="margin-top:10px;color:var(--green);word-break:break-all"></div>
+          </div>
+          <button id="btn-recover" class="btn btn-ghost">RECOVER PRIVATE KEY</button>
+          <hr class="thin" />
+          <div class="term" style="font-size:10px">
+            <span class="t-dim">// Polynomial over GF(2^31 - 1)</span>
+            <span class="t-hi">f(x) = a0 + a1*x + ... + a(k-1)*x^(k-1)</span>
+            <span class="t-dim">share_i = f(i) for i in 1..n</span>
+            <span class="t-ok">recover = Lagrange(shares[0..k], x=0)</span>
+            <span class="t-dim">// k-1 shares reveal zero information</span>
+
+            <span class="t-hi">1.</span> Device lost or compromised
+            <span class="t-hi">2.</span> Contact k trusted peers
+            <span class="t-hi">3.</span> Collect k encrypted share contributions
+            <span class="t-hi">4.</span> Reconstruct via Lagrange (local)
+            <span class="t-hi">5.</span> Re-split with new shares
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/crypto-sim.js"></script>
+  <script src="js/network.js"></script>
+  <script src="js/app.js"></script>
+</body>
+
+</html>
